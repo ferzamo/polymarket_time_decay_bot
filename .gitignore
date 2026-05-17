@@ -1,0 +1,6 @@
+data/
+logs/
+config/deploy.env
+config/telegram.env
+config/trading.env
+ssh-key-2026-05-16.key

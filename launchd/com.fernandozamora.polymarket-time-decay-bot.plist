@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.fernandozamora.polymarket-time-decay-bot</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/fernandozamora/.pyenv/versions/3.9.2/bin/python3</string>
+		<string>/Users/fernandozamora/Desktop/polymarket_time_decay_bot/polymarket_time_decay_bot.py</string>
+		<string>--service</string>
+		<string>--telegram</string>
+		<string>--telegram-env-file</string>
+		<string>/Users/fernandozamora/Desktop/polymarket_time_decay_bot/config/telegram.env</string>
+		<string>--polymarket-env-file</string>
+		<string>/Users/fernandozamora/Desktop/polymarket_time_decay_bot/config/trading.env</string>
+		<string>--interval</string>
+		<string>60</string>
+		<string>--top</string>
+		<string>10</string>
+		<string>--limit-per-page</string>
+		<string>100</string>
+		<string>--db-path</string>
+		<string>/Users/fernandozamora/Desktop/polymarket_time_decay_bot/data/polymarket_time_decay.sqlite3</string>
+		<string>--strategy-file</string>
+		<string>/Users/fernandozamora/Desktop/polymarket_time_decay_bot/config/time_decay_strategy.json</string>
+		<string>--log-file</string>
+		<string>/Users/fernandozamora/Desktop/polymarket_time_decay_bot/logs/polymarket_time_decay_bot.log</string>
+		<string>--notify-top</string>
+		<string>3</string>
+		<string>--notification-cooldown</string>
+		<string>1800</string>
+		<string>--min-liquidity</string>
+		<string>2000.0</string>
+		<string>--min-volume-24h</string>
+		<string>250.0</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/fernandozamora/Desktop/polymarket_time_decay_bot</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PYTHONUNBUFFERED</key>
+		<string>1</string>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>/Users/fernandozamora/Desktop/polymarket_time_decay_bot/logs/launchd.stdout.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/fernandozamora/Desktop/polymarket_time_decay_bot/logs/launchd.stderr.log</string>
+</dict>
+</plist>

@@ -1,0 +1,16 @@
+[Unit]
+Description=Polymarket Time Decay Bot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/polymarket_time_decay_bot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/ubuntu/polymarket_time_decay_bot/polymarket_time_decay_bot.py --service --telegram --telegram-env-file /home/ubuntu/polymarket_time_decay_bot/config/telegram.env --polymarket-env-file /home/ubuntu/polymarket_time_decay_bot/config/trading.env --interval 60 --top 10 --limit-per-page 100 --db-path /home/ubuntu/polymarket_time_decay_bot/data/polymarket_time_decay.sqlite3 --strategy-file /home/ubuntu/polymarket_time_decay_bot/config/time_decay_strategy.json --log-file /home/ubuntu/polymarket_time_decay_bot/logs/polymarket_time_decay_bot.log --notify-top 3 --notification-cooldown 1800 --min-liquidity 2000 --min-volume-24h 250
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
