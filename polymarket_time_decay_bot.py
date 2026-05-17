@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from html import escape as html_escape
 import json
 import logging
 import math
@@ -1341,21 +1342,32 @@ def render_opportunities(
 
 def build_telegram_digest(opportunities: list[Opportunity]) -> str:
     lines = [
-        "Polymarket Time Decay Bot",
-        format_timestamp(opportunities[0].fetched_at),
-        f"Oportunidades nuevas: {len(opportunities)}",
+        "<b>Polymarket Time Decay Bot</b>",
+        f"<b>Actualizado:</b> <code>{html_escape(format_timestamp(opportunities[0].fetched_at))}</code>",
+        f"<b>Oportunidades nuevas:</b> {len(opportunities)}",
         "",
     ]
     for index, opportunity in enumerate(opportunities, start=1):
-        lines.append(f"{index}. {opportunity.window_label} | quedan {opportunity.hours_remaining:.1f}h")
-        lines.append(opportunity.question)
+        lines.append(f"<b>{index}. {html_escape(opportunity.question)}</b>")
         lines.append(
-            f"NO modelo {opportunity.model_probability_no:.1%} | YES {opportunity.market_yes_price:.3f} / NO {opportunity.market_no_price:.3f}"
+            f"<b>Ventana:</b> {html_escape(opportunity.window_label)} | <b>Cierre estimado:</b> {opportunity.hours_remaining:.1f}h"
         )
         lines.append(
-            f"Comprar NO a {opportunity.limit_price:.3f} | edge {opportunity.edge:.1%} | elapsed {opportunity.elapsed_fraction:.1%}"
+            f"<b>Modelo:</b> YES {opportunity.model_probability_yes:.1%} | NO {opportunity.model_probability_no:.1%}"
         )
-        lines.append(market_url(opportunity))
+        lines.append(
+            f"<b>Mercado:</b> YES {opportunity.market_yes_price:.3f} | NO {opportunity.market_no_price:.3f}"
+        )
+        lines.append(
+            f"<b>Accion sugerida:</b> Comprar <b>{html_escape(opportunity.recommended_side)}</b> a <code>{opportunity.limit_price:.3f}</code>"
+        )
+        lines.append(
+            f"<b>Ventaja estimada:</b> {opportunity.edge:.1%} | <b>Tiempo transcurrido:</b> {opportunity.elapsed_fraction:.1%}"
+        )
+        lines.append(
+            f"<b>Liquidez:</b> {format_money(opportunity.liquidity)} | <b>Vol 24h:</b> {format_money(opportunity.volume_24h)}"
+        )
+        lines.append(f"<a href=\"{html_escape(market_url(opportunity), quote=True)}\">Abrir mercado</a>")
         lines.append("")
     return "\n".join(lines).strip()
 
@@ -1366,6 +1378,7 @@ def send_telegram_message(bot_token: str, chat_id: str, text: str) -> None:
         {
             "chat_id": chat_id,
             "text": text,
+            "parse_mode": "HTML",
             "disable_web_page_preview": "true",
         },
     )
@@ -1552,7 +1565,7 @@ def write_launchd_plist(
 def send_telegram_test_message(args: argparse.Namespace) -> int:
     if not args.telegram_bot_token or not args.telegram_chat_id:
         raise ValueError("Faltan credenciales de Telegram para enviar el mensaje de prueba.")
-    send_telegram_message(args.telegram_bot_token, args.telegram_chat_id, args.telegram_test_message)
+    send_telegram_message(args.telegram_bot_token, args.telegram_chat_id, html_escape(args.telegram_test_message))
     return 0
 
 

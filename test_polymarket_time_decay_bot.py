@@ -16,6 +16,7 @@ from polymarket_time_decay_bot import DEFAULT_STRATEGY
 from polymarket_time_decay_bot import Opportunity
 from polymarket_time_decay_bot import TimeDecayMarket
 from polymarket_time_decay_bot import build_time_decay_markets
+from polymarket_time_decay_bot import build_telegram_digest
 from polymarket_time_decay_bot import calculate_time_decay_yes_probability
 from polymarket_time_decay_bot import ensure_db
 from polymarket_time_decay_bot import evaluate_market
@@ -26,6 +27,7 @@ from polymarket_time_decay_bot import hydrate_telegram_credentials
 from polymarket_time_decay_bot import load_simple_env_file
 from polymarket_time_decay_bot import parse_yes_no_prices
 from polymarket_time_decay_bot import run_cycle
+from polymarket_time_decay_bot import send_telegram_message
 
 
 def build_raw_market(
@@ -173,6 +175,63 @@ class HttpRetryTests(unittest.TestCase):
         self.assertEqual(payload, {"ok": True})
         self.assertEqual(mock_urlopen.call_count, 2)
         mock_sleep.assert_called_once_with(7.0)
+
+
+class TelegramDigestTests(unittest.TestCase):
+    def test_build_telegram_digest_uses_human_readable_labels(self) -> None:
+        opportunity = Opportunity(
+            event_id="event-1",
+            event_title="Apple AR",
+            event_slug="apple-ar",
+            market_id="m-1",
+            question="Will Apple announce an AR device today?",
+            slug="apple-ar-device",
+            start_time=datetime(2026, 5, 17, 0, 0, tzinfo=timezone.utc),
+            end_time=datetime(2026, 5, 18, 0, 0, tzinfo=timezone.utc),
+            window_label="daily",
+            hours_remaining=3.5,
+            total_hours=24.0,
+            elapsed_fraction=0.854,
+            baseline_yes_probability=0.5,
+            model_probability_yes=0.18,
+            model_probability_no=0.82,
+            market_yes_price=0.24,
+            market_no_price=0.76,
+            recommended_side="NO",
+            current_side_price=0.76,
+            confidence=0.91,
+            edge=0.06,
+            limit_price=0.79,
+            share_size=12.5,
+            token_id="no-token",
+            tick_size="0.01",
+            neg_risk=False,
+            liquidity=12_000.0,
+            volume_24h=5_400.0,
+            fetched_at=int(datetime(2026, 5, 17, 12, 0, tzinfo=timezone.utc).timestamp()),
+        )
+
+        digest = build_telegram_digest([opportunity])
+
+        self.assertEqual(digest.splitlines()[0], "<b>Polymarket Time Decay Bot</b>")
+        self.assertIn("<b>Actualizado:</b> <code>2026-05-17 12:00:00 UTC</code>", digest)
+        self.assertIn("<b>1. Will Apple announce an AR device today?</b>", digest)
+        self.assertIn("<b>Ventana:</b> daily | <b>Cierre estimado:</b> 3.5h", digest)
+        self.assertIn("<b>Modelo:</b> YES 18.0% | NO 82.0%", digest)
+        self.assertIn("<b>Mercado:</b> YES 0.240 | NO 0.760", digest)
+        self.assertIn("<b>Accion sugerida:</b> Comprar <b>NO</b> a <code>0.790</code>", digest)
+        self.assertIn("<b>Ventaja estimada:</b> 6.0% | <b>Tiempo transcurrido:</b> 85.4%", digest)
+        self.assertIn("<b>Liquidez:</b> $12.0K | <b>Vol 24h:</b> $5.4K", digest)
+        self.assertIn('<a href="https://polymarket.com/event/apple-ar">Abrir mercado</a>', digest)
+
+    def test_send_telegram_message_uses_html_parse_mode(self) -> None:
+        with patch("polymarket_time_decay_bot.post_form_json", return_value={"ok": True}) as mock_post:
+            send_telegram_message("bot-token", "chat-id", "<b>hola</b>")
+
+        self.assertEqual(mock_post.call_count, 1)
+        payload = mock_post.call_args.args[1]
+        self.assertEqual(payload["parse_mode"], "HTML")
+        self.assertEqual(payload["text"], "<b>hola</b>")
 
 
 class TimeDecayParsingTests(unittest.TestCase):
