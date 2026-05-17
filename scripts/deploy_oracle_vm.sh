@@ -194,8 +194,6 @@ rsync_args=(
     --exclude=data/
     --exclude=logs/
     --exclude=config/deploy.env
-    --exclude=config/telegram.env
-    --exclude=config/trading.env
 )
 
 exclude_repo_relative_path "$deploy_env_file"
@@ -227,20 +225,24 @@ set -euo pipefail
 
 remote_dir="$1"
 service_name="$2"
-legacy_remote_dir="/home/ubuntu/polymarket_weather_bot"
 
 cd "$remote_dir"
 
-if [[ "$remote_dir" != "$legacy_remote_dir" ]] && [[ -d "$legacy_remote_dir/config" ]]; then
-    for env_file in telegram.env trading.env; do
-        legacy_env_path="$legacy_remote_dir/config/$env_file"
-        target_env_path="$remote_dir/config/$env_file"
-        if [[ ! -f "$target_env_path" && -f "$legacy_env_path" ]]; then
-            mkdir -p "$(dirname "$target_env_path")"
-            install -m 600 "$legacy_env_path" "$target_env_path"
-        fi
-    done
-fi
+mkdir -p config
+
+for env_file in telegram.env trading.env; do
+    env_path="config/$env_file"
+    example_path="${env_path}.example"
+
+    if [[ -f "$env_path" ]]; then
+        chmod 600 "$env_path"
+        continue
+    fi
+
+    if [[ -f "$example_path" ]]; then
+        install -m 600 "$example_path" "$env_path"
+    fi
+done
 
 if [[ -f requirements.txt ]] && python3 -m pip --version >/dev/null 2>&1; then
     python3 -m pip install --user -r requirements.txt
