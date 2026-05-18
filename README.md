@@ -15,6 +15,7 @@ El bot:
 3. Descarta superficies obvias donde el modelo no aplica bien, como mercados meteorológicos, deportes o cruces de precio.
 4. Modela una probabilidad generosa para el YES al inicio de la ventana y la hace decaer con un modelo de hazard constante sobre el tiempo restante.
 5. Compra NO cuando la probabilidad modelada del NO supera al precio de mercado por el edge mínimo configurado.
+6. Dimensiona la orden con Kelly fraccional sobre la probabilidad modelada del NO y el precio límite, acotado por el tope configurado por trade.
 
 Las órdenes live usan `py-clob-client-v2` y se envían como compras límite `GTC` sobre el token `NO` recomendado.
 
@@ -45,7 +46,10 @@ Campos principales:
 - `min_confidence`: confianza mínima exigida al NO modelado.
 - `max_entry_price`: precio máximo aceptado para comprar NO.
 - `entry_price_buffer`: colchón para construir la orden límite.
-- `trade_amount_usdc`: tamaño por trade.
+- `trade_amount_usdc`: tope máximo por trade.
+- `bankroll_usdc`: bankroll de referencia usado por el sizing Kelly.
+- `kelly_fraction`: fracción de Kelly aplicada al sizing. `0.25` equivale a quarter Kelly.
+- `min_trade_amount_usdc`: notional mínimo exigido para enviar la orden.
 - `max_trades_per_cycle`: límite de órdenes nuevas por iteración.
 
 ### Telegram

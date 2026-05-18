@@ -111,6 +111,9 @@ DEFAULT_STRATEGY = {
     "max_entry_price": 0.97,
     "entry_price_buffer": 0.01,
     "trade_amount_usdc": 25.0,
+    "bankroll_usdc": 100.0,
+    "kelly_fraction": 0.25,
+    "min_trade_amount_usdc": 1.0,
     "max_trades_per_cycle": 1,
     "optimistic_yes_prior": 0.65,
     "yes_bias_buffer": 0.05,
@@ -313,7 +316,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--trade-amount-usdc",
         type=float,
         default=None,
-        help="Capital a arriesgar por operación en USDC.",
+        help="Tope máximo a comprometer por operación en USDC.",
+    )
+    parser.add_argument(
+        "--bankroll-usdc",
+        type=float,
+        default=None,
+        help="Bankroll base usado por el sizing Kelly fraccional.",
+    )
+    parser.add_argument(
+        "--kelly-fraction",
+        type=float,
+        default=None,
+        help="Fracción de Kelly usada para escalar el tamaño. 0.25 = quarter Kelly.",
+    )
+    parser.add_argument(
+        "--min-trade-amount-usdc",
+        type=float,
+        default=None,
+        help="Notional mínimo exigido para enviar una orden.",
     )
     parser.add_argument(
         "--max-trades-per-cycle",
@@ -972,6 +993,9 @@ def load_strategy(strategy_path: Path, args: argparse.Namespace) -> dict[str, An
         "max_entry_price": args.max_entry_price,
         "entry_price_buffer": args.entry_price_buffer,
         "trade_amount_usdc": args.trade_amount_usdc,
+        "bankroll_usdc": args.bankroll_usdc,
+        "kelly_fraction": args.kelly_fraction,
+        "min_trade_amount_usdc": args.min_trade_amount_usdc,
         "max_trades_per_cycle": args.max_trades_per_cycle,
         "optimistic_yes_prior": args.optimistic_yes_prior,
         "yes_bias_buffer": args.yes_bias_buffer,
@@ -1000,6 +1024,31 @@ def calculate_time_decay_yes_probability(baseline_yes_probability: float, remain
     if bounded_baseline <= 0.0 or bounded_fraction <= 0.0:
         return 0.0
     return 1.0 - math.pow(1.0 - bounded_baseline, bounded_fraction)
+
+
+def calculate_kelly_bet_fraction(win_probability: float, price: float) -> float:
+    bounded_probability = min(0.999999, max(0.0, win_probability))
+    bounded_price = min(0.999999, max(0.0, price))
+    if bounded_price <= 0.0 or bounded_price >= 1.0:
+        return 0.0
+
+    edge = bounded_probability - bounded_price
+    if edge <= 0.0:
+        return 0.0
+    return min(1.0, edge / (1.0 - bounded_price))
+
+
+def calculate_kelly_trade_amount(
+    win_probability: float,
+    price: float,
+    bankroll_usdc: float,
+    kelly_fraction: float,
+) -> float:
+    bounded_bankroll = max(0.0, bankroll_usdc)
+    bounded_kelly_fraction = min(1.0, max(0.0, kelly_fraction))
+    if bounded_bankroll <= 0.0 or bounded_kelly_fraction <= 0.0:
+        return 0.0
+    return bounded_bankroll * bounded_kelly_fraction * calculate_kelly_bet_fraction(win_probability, price)
 
 
 def round_price_to_tick(price: float, tick_size: str) -> float:
@@ -1041,7 +1090,12 @@ def evaluate_market(market: TimeDecayMarket, strategy: dict[str, Any]) -> Opport
     min_edge = safe_float(strategy.get("min_edge"), DEFAULT_STRATEGY["min_edge"])
     min_confidence = safe_float(strategy.get("min_confidence"), DEFAULT_STRATEGY["min_confidence"])
     entry_price_buffer = safe_float(strategy.get("entry_price_buffer"), DEFAULT_STRATEGY["entry_price_buffer"])
-    trade_amount_usdc = safe_float(strategy.get("trade_amount_usdc"), DEFAULT_STRATEGY["trade_amount_usdc"])
+    trade_amount_cap_usdc = safe_float(strategy.get("trade_amount_usdc"), DEFAULT_STRATEGY["trade_amount_usdc"])
+    bankroll_usdc = safe_float(strategy.get("bankroll_usdc"), DEFAULT_STRATEGY["bankroll_usdc"])
+    kelly_fraction = safe_float(strategy.get("kelly_fraction"), DEFAULT_STRATEGY["kelly_fraction"])
+    min_trade_amount_usdc = safe_float(
+        strategy.get("min_trade_amount_usdc"), DEFAULT_STRATEGY["min_trade_amount_usdc"]
+    )
 
     if edge < min_edge:
         return None
@@ -1051,6 +1105,17 @@ def evaluate_market(market: TimeDecayMarket, strategy: dict[str, Any]) -> Opport
         return None
 
     limit_price = round_price_to_tick(min(max_entry_price, market.no_price + entry_price_buffer), market.tick_size)
+    trade_amount_usdc = min(
+        trade_amount_cap_usdc,
+        calculate_kelly_trade_amount(
+            win_probability=model_probability_no,
+            price=limit_price,
+            bankroll_usdc=bankroll_usdc,
+            kelly_fraction=kelly_fraction,
+        ),
+    )
+    if trade_amount_usdc < min_trade_amount_usdc:
+        return None
     share_size = round(trade_amount_usdc / limit_price, 6)
     if limit_price <= 0 or share_size <= 0:
         return None
@@ -1482,6 +1547,9 @@ def build_plist_overrides(args: argparse.Namespace) -> list[str]:
         ("--max-entry-price", args.max_entry_price),
         ("--entry-price-buffer", args.entry_price_buffer),
         ("--trade-amount-usdc", args.trade_amount_usdc),
+        ("--bankroll-usdc", args.bankroll_usdc),
+        ("--kelly-fraction", args.kelly_fraction),
+        ("--min-trade-amount-usdc", args.min_trade_amount_usdc),
         ("--max-trades-per-cycle", args.max_trades_per_cycle),
         ("--optimistic-yes-prior", args.optimistic_yes_prior),
         ("--yes-bias-buffer", args.yes_bias_buffer),
@@ -1579,8 +1647,20 @@ def validate_strategy(strategy: dict[str, Any]) -> None:
     max_entry_price = safe_float(strategy.get("max_entry_price"), -1.0)
     if max_entry_price <= 0 or max_entry_price >= 1:
         raise ValueError("max_entry_price debe estar entre 0 y 1.")
-    if safe_float(strategy.get("trade_amount_usdc"), 0.0) <= 0:
+    trade_amount_usdc = safe_float(strategy.get("trade_amount_usdc"), 0.0)
+    if trade_amount_usdc <= 0:
         raise ValueError("trade_amount_usdc debe ser mayor que 0.")
+    bankroll_usdc = safe_float(strategy.get("bankroll_usdc"), -1.0)
+    if bankroll_usdc <= 0:
+        raise ValueError("bankroll_usdc debe ser mayor que 0.")
+    kelly_fraction = safe_float(strategy.get("kelly_fraction"), -1.0)
+    if kelly_fraction <= 0 or kelly_fraction > 1:
+        raise ValueError("kelly_fraction debe estar entre 0 y 1.")
+    min_trade_amount_usdc = safe_float(strategy.get("min_trade_amount_usdc"), -1.0)
+    if min_trade_amount_usdc < 0:
+        raise ValueError("min_trade_amount_usdc no puede ser negativo.")
+    if min_trade_amount_usdc > trade_amount_usdc:
+        raise ValueError("min_trade_amount_usdc no puede superar trade_amount_usdc.")
     if int(strategy.get("max_trades_per_cycle", 0)) <= 0:
         raise ValueError("max_trades_per_cycle debe ser mayor que 0.")
     optimistic_yes_prior = safe_float(strategy.get("optimistic_yes_prior"), -1.0)

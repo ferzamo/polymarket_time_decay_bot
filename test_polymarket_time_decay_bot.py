@@ -17,6 +17,7 @@ from polymarket_time_decay_bot import Opportunity
 from polymarket_time_decay_bot import TimeDecayMarket
 from polymarket_time_decay_bot import build_time_decay_markets
 from polymarket_time_decay_bot import build_telegram_digest
+from polymarket_time_decay_bot import calculate_kelly_trade_amount
 from polymarket_time_decay_bot import calculate_time_decay_yes_probability
 from polymarket_time_decay_bot import ensure_db
 from polymarket_time_decay_bot import evaluate_market
@@ -326,6 +327,43 @@ class OpportunityTests(unittest.TestCase):
         self.assertEqual(opportunity.token_id, "no-token")
         self.assertGreater(opportunity.edge, 0.08)
         self.assertGreater(opportunity.model_probability_no, 0.90)
+
+    def test_evaluate_market_sizes_trade_with_fractional_kelly(self) -> None:
+        fetched_at = int(datetime(2026, 5, 17, 22, 0, tzinfo=timezone.utc).timestamp())
+        market = self.build_market(fetched_at=fetched_at)
+        strategy = dict(DEFAULT_STRATEGY)
+        strategy["trade_amount_usdc"] = 25.0
+        strategy["bankroll_usdc"] = 100.0
+        strategy["kelly_fraction"] = 0.25
+        strategy["min_trade_amount_usdc"] = 1.0
+
+        opportunity = evaluate_market(market, strategy)
+
+        self.assertIsNotNone(opportunity)
+        assert opportunity is not None
+        expected_trade_amount = calculate_kelly_trade_amount(
+            win_probability=opportunity.model_probability_no,
+            price=opportunity.limit_price,
+            bankroll_usdc=strategy["bankroll_usdc"],
+            kelly_fraction=strategy["kelly_fraction"],
+        )
+        self.assertAlmostEqual(opportunity.limit_price * opportunity.share_size, expected_trade_amount, places=5)
+        self.assertLess(opportunity.limit_price * opportunity.share_size, strategy["trade_amount_usdc"])
+
+    def test_evaluate_market_caps_trade_amount_at_trade_budget(self) -> None:
+        fetched_at = int(datetime(2026, 5, 17, 22, 0, tzinfo=timezone.utc).timestamp())
+        market = self.build_market(fetched_at=fetched_at)
+        strategy = dict(DEFAULT_STRATEGY)
+        strategy["trade_amount_usdc"] = 5.0
+        strategy["bankroll_usdc"] = 1_000.0
+        strategy["kelly_fraction"] = 1.0
+        strategy["min_trade_amount_usdc"] = 1.0
+
+        opportunity = evaluate_market(market, strategy)
+
+        self.assertIsNotNone(opportunity)
+        assert opportunity is not None
+        self.assertAlmostEqual(opportunity.limit_price * opportunity.share_size, strategy["trade_amount_usdc"], places=5)
 
     def test_evaluate_market_skips_market_too_early_in_window(self) -> None:
         fetched_at = int(datetime(2026, 5, 17, 6, 0, tzinfo=timezone.utc).timestamp())
